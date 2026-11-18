@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Central de Cobrança Galo</title>
+<meta name="theme-color" content="#131715">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cobrança Galo">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png" type="image/png">
+<style>
+:root{
+  --bg:#eef1ef; --surface:#ffffff; --ink:#131715; --muted:#5b6660; --line:#d3dad6;
+  --accent:#17694a; --accent-ink:#ffffff; --accent-soft:#e0efe8;
+  --warn:#9a5b00; --warn-soft:#fbefd5; --crit:#b42318; --crit-soft:#fbe4e1;
+  --stripe-a:#131715; --stripe-b:#ffffff;
+  --display:"Arial Narrow","Roboto Condensed",system-ui,sans-serif;
+  --body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0e1210; --surface:#171c19; --ink:#e8ece9; --muted:#98a39d; --line:#29322d;
+  --accent:#4fc08e; --accent-ink:#0b1a13; --accent-soft:#17302a;
+  --warn:#e6a94a; --warn-soft:#33260f; --crit:#f0857b; --crit-soft:#3a1a17;
+  --stripe-a:#e8ece9; --stripe-b:#131715; color-scheme:dark}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);padding-top:env(safe-area-inset-top,0px)}
+[hidden]{display:none!important}
+.wrap{max-width:1000px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.stripes{height:8px;background:repeating-linear-gradient(90deg,var(--stripe-a) 0 14px,var(--stripe-b) 14px 28px)}
+header .wrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-block:12px 8px}
+h1{font:700 28px var(--display);margin:0}
+h1 small{font-weight:500;color:var(--muted);font-size:17px;margin-left:6px}
+h2{font:700 21px var(--display);margin:0 0 6px}
+.grow{flex:1}
+.pill{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:99px;background:var(--accent-soft);color:var(--accent)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.err{background:var(--crit-soft);color:var(--crit)}
+nav.tabs{border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+nav.tabs .wrap{display:flex;gap:2px;overflow-x:auto}
+.tab{font:600 14px var(--body);color:var(--muted);background:none;border:0;border-bottom:3px solid transparent;padding:12px 12px;cursor:pointer;white-space:nowrap}
+.tab[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent)}
+main .wrap{padding-block:18px calc(56px + env(safe-area-inset-bottom,0px));display:grid;gap:22px}
+.sub{color:var(--muted);margin:0 0 12px;max-width:68ch}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;min-width:0}
+.tile b{display:block;font:700 30px/1.05 var(--display);overflow-wrap:anywhere}
+.tile span{color:var(--muted);font-size:13px}
+.tile.ok b{color:var(--accent)} .tile.bad b{color:var(--crit)} .tile.warn b{color:var(--warn)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px}
+.row{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row .main{flex:1 1 240px;min-width:0;overflow-wrap:anywhere}
+.row .main small{display:block;color:var(--muted)}
+.empty{padding:20px 16px;color:var(--muted)} .empty b{color:var(--ink)}
+.chip{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.chip.warn{background:var(--warn-soft);color:var(--warn)} .chip.bad{background:var(--crit-soft);color:var(--crit)} .chip.muted{background:var(--bg);color:var(--muted)}
+button{font:600 14px var(--body);border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:10px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--muted)}
+input,select,textarea{font:400 16px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%;min-width:0}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;padding:16px;align-items:end}
+.form .full{grid-column:1/-1}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.banner{border-radius:8px;padding:12px 16px;background:var(--warn-soft);color:var(--warn);font-weight:500}
+.banner.bad{background:var(--crit-soft);color:var(--crit)}
+.note{font-size:13px;color:var(--muted)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-weight:500;z-index:20;max-width:calc(100% - 32px)}
+pre.msg{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0 0;font:13.5px/1.5 var(--body);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.msgs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:12px}
+.msgcard{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;min-width:0}
+.msgcard h3{margin:0 0 2px;font:700 18px var(--display)}
+.msgcard .uso{color:var(--muted);font-size:13px}
+.login{min-height:100vh;display:grid;place-items:center;padding:20px}
+.login .box{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.login .box .in{padding:20px;display:grid;gap:14px}
+.login h1{font-size:30px}
+a.lnk{color:var(--accent);font-weight:600;background:none;border:0;padding:0;cursor:pointer;font:600 14px var(--body)}
+code.k{font:12.5px ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:1px 5px;word-break:break-all}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="tela-login" class="login" hidden>
+  <div class="box">
+    <div class="stripes"></div>
+    <form class="in" id="form-login" autocomplete="on">
+      <div><h1>Central de Cobrança</h1><div class="note">Academia de Futebol do Galo · Varginha</div></div>
+      <div id="login-aviso" class="banner bad" hidden></div>
+      <label>E-mail<input id="l-email" type="email" autocomplete="username" inputmode="email" required></label>
+      <label>Senha<input id="l-senha" type="password" autocomplete="current-password" required></label>
+      <button class="primary" type="submit" id="l-entrar">Entrar</button>
+      <div class="actions" style="justify-content:space-between"><button type="button" class="lnk-btn" id="l-esqueci" style="border:0;background:none;padding:0;color:var(--accent)">Esqueci minha senha</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- DEFINIR SENHA (convite / redefinição) -->
+<div id="tela-senha" class="login" hidden>
+  <div class="box">
+    <div class="stripes"></div>
+    <form class="in" id="form-senha">
+      <div><h1>Defina sua senha</h1><div class="note" id="senha-quem"></div></div>
+      <div id="senha-aviso" class="banner bad" hidden></div>
+      <label>Nova senha (mínimo 8 caracteres)<input id="s-nova" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label>Repita a senha<input id="s-rep" type="password" autocomplete="new-password" minlength="8" required></label>
+      <button class="primary" type="submit" id="s-salvar">Salvar senha e entrar</button>
+    </form>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" hidden>
+<header>
+  <div class="stripes"></div>
+  <div class="wrap">
+    <h1>Central de Cobrança <small>Galo Varginha</small></h1>
+    <span class="grow"></span>
+    <span id="conn" class="pill warn">Conectando</span>
+    <span id="papel" class="pill"></span>
+    <button id="sair" type="button" style="padding:6px 10px;font-size:13px">Sair</button>
+  </div>
+</header>
+<nav class="tabs" aria-label="Seções"><div class="wrap" id="tabs"></div></nav>
+<main><div class="wrap">
+  <div id="banner" class="banner" hidden></div>
+
+  <section id="tab-hoje">
+    <h2>Situação do robô</h2>
+    <p class="sub">O robô na nuvem lê o Genesis e grava no Supabase; este app só consulta, com números e estados.</p>
+    <div class="tiles" id="tiles"></div>
+    <p class="note" id="status-when" style="margin-top:8px"></p>
+    <div style="height:18px"></div>
+    <h2>Automação na nuvem</h2>
+    <div class="tiles" id="nuvem-tiles"></div>
+    <p class="note" id="nuvem-when" style="margin-top:8px"></p>
+    <div style="height:18px"></div>
+    <h2>Histórico das rotinas</h2>
+    <div class="card" id="log"></div>
+    <div style="height:18px"></div>
+    <h2>Como o robô trabalha</h2>
+    <div class="card">
+      <div class="row"><div class="main"><b>A cada 30 minutos</b><small>Visita o Genesis só para manter a sessão aberta. Não altera nada.</small></div><span class="chip">Manter sessão</span></div>
+      <div class="row"><div class="main"><b>Dias úteis às 10h</b><small>Lê as faturas dos dois últimos meses e monta a lista de aviso (2 dias após o vencimento). Não envia mensagens. Às 10h08 chega o resultado por notificação.</small></div><span class="chip">Rotina diária</span></div>
+      <div class="row"><div class="main"><b>Segundas às 08h15</b><small>Varredura dos últimos 5 meses para os atrasados.</small></div><span class="chip">Varredura</span></div>
+    </div>
+  </section>
+
+  <section id="tab-resumo" hidden>
+    <h2>Resumo das rotinas</h2>
+    <p class="sub">Texto montado a partir do histórico e do estado do robô.</p>
+    <div class="card" id="resumo-texto"></div>
+  </section>
+
+  <section id="tab-comunicacao" hidden>
+    <h2>Comunicação com clientes</h2>
+    <p class="sub">Depois de cada varredura do WhatsApp, o Claude grava a situação aqui.</p>
+    <div class="tiles" id="com-tiles"></div>
+    <p class="note" id="com-when" style="margin-top:8px"></p>
+    <div style="height:16px"></div><h2>Retornos a responder</h2><div class="card" id="com-responder"></div>
+    <div style="height:16px"></div><h2>Com o Sr. Carlos</h2><div class="card" id="com-carlos"></div>
+    <div style="height:16px"></div><h2>Respostas enviadas</h2><div class="card" id="com-enviadas"></div>
+  </section>
+
+  <section id="tab-central" hidden>
+    <h2>Cronograma de rotinas</h2>
+    <p class="sub">Somente leitura. Para mudar horário ou rotina, o administrador envia uma solicitação.</p>
+    <div class="card" id="cron-lista"></div>
+    <div style="height:22px"></div>
+    <h2>Modelos de mensagens</h2>
+    <p class="sub">Textos oficiais usados nas respostas e avisos. Troque [nome], [aluno], {lista}, {total} e {prazo} pelos dados de cada caso.</p>
+    <div class="msgs" id="msg-cards"></div>
+  </section>
+
+  <section id="tab-pedidos" hidden>
+    <h2>Enviar solicitação</h2>
+    <p class="sub">O pedido fica na fila. O Claude atende quando você abrir uma conversa e pedir "ver solicitações do portal". Envio de mensagens, baixas e valores continuam exigindo a sua confirmação.</p>
+    <div class="card"><form class="form" id="form-pedido">
+      <label>Tipo
+        <select id="p-tipo"><option>Rodar a rotina agora</option><option>Gerar relatório</option><option>Preparar mensagens para aprovar</option><option>Dar baixa em pagamento</option><option>Ajustar regra da automação</option><option>Outro</option></select>
+      </label>
+      <label>Prioridade<select id="p-prio"><option value="normal">Normal</option><option value="alta">Alta</option></select></label>
+      <label class="full">O que precisa ser feito<textarea id="p-texto" rows="4" maxlength="800" required></textarea></label>
+      <div class="full actions"><button class="primary" type="submit" id="p-enviar">Enviar solicitação</button></div>
+    </form></div>
+    <div style="height:18px"></div><h2>Fila</h2><div class="card" id="fila"></div>
+  </section>
+
+  <section id="tab-acessos" hidden>
+    <h2>Acessos</h2>
+    <p class="sub">Administrador vê e altera tudo. Operador só consulta. O convite gera um link de primeiro acesso, que você envia à pessoa (por WhatsApp, por exemplo). O link vale por 24 horas e serve uma vez.</p>
+    <div class="card"><form class="form" id="form-convite">
+      <label class="full">E-mail da pessoa<input id="c-email" type="email" required></label>
+      <label>Perfil<select id="c-papel"><option value="operador">Operador (somente consulta)</option><option value="admin">Administrador</option></select></label>
+      <div class="actions"><button class="primary" type="submit" id="c-enviar">Gerar convite</button></div>
+    </form></div>
+    <div id="convite-out" class="card" style="margin-top:12px" hidden></div>
+    <div style="height:18px"></div><h2>Quem tem acesso</h2><div class="card" id="acessos-lista"></div>
+  </section>
+</div></main>
+</div>
+<div id="toast" class="toast" hidden role="status"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
+<script>
+const SB_URL = "https://lcayypvckwusqxpxioic.supabase.co";
+const SB_KEY = "sb_publishable_dzgHu2bN47hqFiqo68JlVg_H_gYEOeG"; // chave pública: o acesso real é protegido por login + regras no banco
+const APP_URL = location.origin + location.pathname;
+const $ = (s) => document.querySelector(s);
+const el = (tag, props, ...kids) => {
+  const e = document.createElement(tag);
+  if (props) for (const k in props) { if (k === "class") e.className = props[k]; else e.setAttribute(k, props[k]); }
+  kids.forEach((k) => e.append(k && k.nodeType ? k : document.createTextNode(k == null ? "" : String(k))));
+  return e;
+};
+const when = (iso) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
+const empty = (t, s) => { const d = el("div", { class: "empty" }); d.append(el("b", null, t), document.createElement("br"), s || ""); return d; };
+let tt = null;
+const toast = (m) => { const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => (t.hidden = true), 3500); };
+const conn = (kind, text) => { const c = $("#conn"); c.className = "pill" + (kind ? " " + kind : ""); c.textContent = text; };
+const banner = (msg, bad) => { const b = $("#banner"); if (!msg) { b.hidden = true; return; } b.className = "banner" + (bad ? " bad" : ""); b.textContent = msg; b.hidden = false; };
+const mostrar = (id) => { ["tela-login", "tela-senha", "app"].forEach((x) => ($("#" + x).hidden = x !== id)); };
+
+// detecta link de convite / redefinição ANTES de o cliente consumir o endereço
+const veioDeLink = /type=(invite|recovery)/.test(location.hash);
+const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+
+let papel = null, usuario = null, timer = null, tabAtual = "hoje", statusDoc = null, logRows = [];
+
+/* ---------- login ---------- */
+function avisoLogin(msg) { const a = $("#login-aviso"); a.textContent = msg || ""; a.hidden = !msg; }
+$("#form-login").addEventListener("submit", async (e) => {
+  e.preventDefault(); avisoLogin("");
+  const b = $("#l-entrar"); b.disabled = true;
+  const { error } = await sb.auth.signInWithPassword({ email: $("#l-email").value.trim(), password: $("#l-senha").value });
+  b.disabled = false;
+  if (error) avisoLogin("E-mail ou senha incorretos.");
+});
+$("#l-esqueci").addEventListener("click", async () => {
+  const email = $("#l-email").value.trim();
+  if (!email) { avisoLogin("Digite seu e-mail e toque em “Esqueci minha senha” de novo."); return; }
+  await sb.auth.resetPasswordForEmail(email, { redirectTo: APP_URL });
+  avisoLogin(""); toast("Se o e-mail estiver cadastrado, enviamos um link. Se não chegar, peça um novo link ao administrador.");
+});
+$("#form-senha").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const a = $("#senha-aviso"); a.hidden = true;
+  const n = $("#s-nova").value, r = $("#s-rep").value;
+  if (n.length < 8) { a.textContent = "A senha precisa ter pelo menos 8 caracteres."; a.hidden = false; return; }
+  if (n !== r) { a.textContent = "As senhas não são iguais."; a.hidden = false; return; }
+  $("#s-salvar").disabled = true;
+  const { error } = await sb.auth.updateUser({ password: n });
+  $("#s-salvar").disabled = false;
+  if (error) { a.textContent = "Não foi possível salvar a senha: " + error.message; a.hidden = false; return; }
+  history.replaceState(null, "", location.pathname);
+  toast("Senha criada.");
+  await iniciarApp();
+});
+$("#sair").addEventListener("click", async () => { clearInterval(timer); await sb.auth.signOut(); });
+
+/* ---------- navegação ---------- */
+const ABAS = [["hoje", "Rotinas"], ["resumo", "Resumo"], ["comunicacao", "Comunicação"], ["central", "Central"], ["pedidos", "Solicitações", "admin"], ["acessos", "Acessos", "admin"]];
+function montarAbas() {
+  const box = $("#tabs"); box.textContent = "";
+  ABAS.filter((a) => !a[2] || a[2] === papel).forEach(([id, nome]) => {
+    const b = el("button", { class: "tab", type: "button", "data-tab": id }, nome);
+    b.addEventListener("click", () => { tabAtual = id; rota(); if (id === "acessos") carregarAcessos(); });
+    box.append(b);
+  });
+  rota();
+}
+function rota() {
+  ABAS.forEach(([id]) => { const s = $("#tab-" + id); if (s) s.hidden = id !== tabAtual; });
+  document.querySelectorAll(".tab").forEach((b) => (b.dataset.tab === tabAtual ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current")));
+}
+
+/* ---------- dados ---------- */
+async function q(promise) { const { data, error } = await promise; if (error) throw new Error(error.message); return data || []; }
+async function ciclo() {
+  try {
+    const [rot, mod, cro, com, exe, res, sol] = await Promise.all([
+      q(sb.from("galo_rotinas_log").select("*").order("quando", { ascending: false }).limit(20)),
+      q(sb.from("galo_modelos").select("id,titulo,uso,texto").order("id")),
+      q(sb.from("galo_cronograma").select("*").order("ordem", { ascending: true })),
+      q(sb.from("galo_comunicacao_portal").select("*").order("id", { ascending: true })),
+      q(sb.from("galo_execucoes").select("resultado,modo,estado_sessao,registrado_em").order("registrado_em", { ascending: false }).limit(60)),
+      q(sb.from("galo_resumo").select("dados,atualizado_em").eq("id", "atual")),
+      papel === "admin" ? q(sb.from("galo_solicitacoes").select("*").order("criado_em", { ascending: false }).limit(40)) : Promise.resolve([]),
+    ]);
+    conn("", "Conectado"); banner("");
+    logRows = rot;
+    renderLog(rot); renderModelos(mod); renderCrono(cro); renderCom(com); renderNuvem(exe, res[0] || null);
+    if (papel === "admin") renderFila(sol);
+    renderResumo();
+  } catch (e) {
+    conn("err", "Erro");
+    if (/JWT|expired|not authorized|permission/i.test(e.message)) banner("Sua sessão expirou. Saia e entre de novo.", true);
+    else banner("Não consegui ler os dados agora (" + e.message + "). Tente de novo em instantes.", true);
+  }
+}
+function renderStatus(s) {
+  statusDoc = s;
+  const tiles = $("#tiles"); tiles.textContent = "";
+  const add = (cls, big, small) => { const t = el("div", { class: "tile " + cls }); t.append(el("b", null, big), el("span", null, small)); tiles.append(t); };
+  const ses = (s.sessao && s.sessao.estado) || "—";
+  const ping = s.sessao && s.sessao.ultimo_ping ? " (último ping " + when(s.sessao.ultimo_ping) + ")" : "";
+  add(ses === "ok" ? "ok" : ses === "—" ? "" : "bad", ses === "ok" ? "Ativa" : ses === "—" ? "—" : "Caiu", "sessão do Genesis" + ping);
+  add("", s.faturas_lidas != null ? String(s.faturas_lidas) : "—", "faturas lidas na última rotina");
+  add(s.lista_hoje > 0 ? "warn" : "ok", s.lista_hoje != null ? String(s.lista_hoje) : "—", "responsáveis a avisar hoje");
+  add(s.vencidas ? "bad" : "", s.vencidas != null ? String(s.vencidas) : "—", "faturas vencidas");
+  add("", "10h", "próxima rotina (dias úteis)");
+  $("#status-when").textContent = s.atualizado_em ? "Resumo gerado pelo robô em " + when(s.atualizado_em) + "." : "Ainda sem resumo gravado.";
+}
+function renderNuvem(ex, rs) {
+  const t = $("#nuvem-tiles"); t.textContent = "";
+  const add = (cls, big, small) => { const x = el("div", { class: "tile " + cls }); x.append(el("b", null, String(big)), el("span", null, small)); t.append(x); };
+  const ult = ex[0]; let seguidas = 0; for (const e of ex) { if (e.resultado === "success") break; seguidas++; }
+  const okRec = ex.find((e) => e.resultado === "success");
+  const caiu = ult && ult.resultado !== "success";
+  add(!ult ? "" : caiu ? "bad" : "ok", !ult ? "—" : caiu ? "Caiu" : "Ativa", "sessão do Genesis na nuvem");
+  add(seguidas ? "bad" : "ok", seguidas, "execuções seguidas com falha");
+  add("", ult ? when(ult.registrado_em) : "—", "última execução");
+  add("", okRec ? when(okRec.registrado_em) : "—", "último sucesso");
+  let msg = "Atualizado em " + when(new Date().toISOString()) + ".";
+  if (caiu) msg += " Atenção: a sessão do Genesis expirou. Faça login no Genesis e cole o novo cookie na tabela galo_sessao (Supabase > Table Editor).";
+  $("#nuvem-when").textContent = msg;
+  if (rs && rs.dados) { const d = rs.dados; renderStatus({ atualizado_em: d.gerado_em, sessao: d.sessao || {}, faturas_lidas: d.faturas_lidas, lista_hoje: d.lista_hoje, vencidas: d.vencidas }); }
+  else renderStatus({ sessao: {} });
+}
+function renderLog(rows) {
+  const box = $("#log"); box.textContent = "";
+  if (!rows.length) { box.append(empty("Nenhuma rotina registrada ainda.")); return; }
+  rows.forEach((r) => {
+    const cls = r.resultado === "ok" ? "" : r.resultado === "falha" ? "bad" : "warn";
+    const row = el("div", { class: "row" });
+    const main = el("div", { class: "main" }); main.append(el("b", null, r.nome || "Rotina"), el("small", null, [when(r.quando), r.detalhe].filter(Boolean).join(" · ")));
+    row.append(main, el("span", { class: "chip " + cls }, r.resultado === "ok" ? "Concluída" : r.resultado === "falha" ? "Falhou" : "Atenção"));
+    box.append(row);
+  });
+}
+function renderResumo() {
+  const box = $("#resumo-texto"); box.textContent = "";
+  const s = statusDoc || {}, L = logRows;
+  if (!L.length && !statusDoc) { box.append(empty("Ainda não há rotinas registradas.")); return; }
+  const n = L.length, ok = L.filter((r) => r.resultado === "ok").length, fal = L.filter((r) => r.resultado === "falha").length, ate = n - ok - fal, ult = L[0];
+  const par = [];
+  if (n) par.push("Nas " + n + " rotinas mais recentes, " + ok + " foram concluídas" + (fal ? ", " + fal + " falharam" : "") + (ate ? " e " + ate + " pedem atenção" : "") + ". A última foi “" + (ult.nome || "Rotina") + "”, em " + when(ult.quando) + (ult.detalhe ? ": " + ult.detalhe : "."));
+  const ses = s.sessao && s.sessao.estado;
+  if (ses) par.push(ses === "ok" ? "A sessão do Genesis está ativa, então o robô lê as faturas sem login manual." : "A sessão do Genesis está como “" + ses + "”: é preciso refazer o login do robô.");
+  const nums = [];
+  if (s.faturas_lidas != null) nums.push(s.faturas_lidas + " faturas lidas na última leitura");
+  if (s.vencidas != null) nums.push(s.vencidas + " vencidas");
+  if (s.lista_hoje != null) nums.push(s.lista_hoje + " responsáveis a avisar hoje");
+  if (nums.length) par.push("Situação das cobranças: " + nums.join(", ") + ". Próxima rotina: 10h (dias úteis).");
+  par.push(fal || ate || (ses && ses !== "ok") ? "Atenção: há rotina com falha ou sessão caída. Veja o histórico na aba Rotinas." : "Nenhuma pendência técnica: o robô segue sem intervenção.");
+  par.forEach((t, i) => { const p = el("p", null, t); p.style.cssText = "margin:0;padding:12px 16px;" + (i ? "border-top:1px solid var(--line)" : ""); box.append(p); });
+}
+function renderCom(rows) {
+  const por = (s) => rows.filter((x) => x.situacao === s);
+  const resp = por("a_responder"), carlos = por("com_carlos"), env = por("respondido");
+  const tiles = $("#com-tiles"); tiles.textContent = "";
+  const add = (cls, big, small) => { const t = el("div", { class: "tile " + cls }); t.append(el("b", null, String(big)), el("span", null, small)); tiles.append(t); };
+  add("", rows.length, "conversas na última varredura"); add(resp.length ? "warn" : "ok", resp.length, "retornos a responder");
+  add(carlos.length ? "warn" : "", carlos.length, "com o Sr. Carlos"); add("ok", env.length, "respostas enviadas");
+  $("#com-when").textContent = rows.length && rows[0].varredura_em ? "Última varredura do WhatsApp em " + when(rows[0].varredura_em) + "." : "Ainda sem varredura registrada.";
+  const lista = (sel, arr, t1, t2) => {
+    const box = $(sel); box.textContent = "";
+    if (!arr.length) { box.append(empty(t1, t2)); return; }
+    arr.forEach((x) => {
+      const row = el("div", { class: "row" }); const main = el("div", { class: "main" });
+      main.append(el("b", null, x.primeiro_nome || "Cliente"), el("small", null, (x.quando ? when(x.quando) + " · " : "") + (x.assunto || "")));
+      if (x.resposta) main.append(el("small", null, "Resposta enviada: " + x.resposta));
+      if (x.nota) main.append(el("small", null, x.nota));
+      row.append(main, el("span", { class: "chip " + (x.situacao === "respondido" ? "" : "warn") }, x.situacao === "respondido" ? "Respondido" : "Aguardando"));
+      box.append(row);
+    });
+  };
+  lista("#com-responder", resp, "Nada a responder.", "Todos os retornos já foram tratados.");
+  lista("#com-carlos", carlos, "Nada com o Sr. Carlos.", "Casos de valor, isenção ou desligamento aparecem aqui.");
+  lista("#com-enviadas", env, "Nenhuma resposta enviada na última varredura.", "");
+}
+const TIPOS = { auto: "Automática", claude: "Com o Claude", manual: "Manual" };
+function renderCrono(rows) {
+  const box = $("#cron-lista"); box.textContent = "";
+  if (!rows.length) { box.append(empty("Nenhuma rotina cadastrada.")); return; }
+  rows.forEach((r) => {
+    const row = el("div", { class: "row" }); const main = el("div", { class: "main" });
+    main.append(el("b", null, r.nome || ""), el("small", null, r.quando || ""));
+    if (r.obs) main.append(el("small", null, r.obs));
+    row.append(main, el("span", { class: "chip muted" }, TIPOS[r.tipo] || r.tipo || ""), el("span", { class: "chip " + (r.ativo === false ? "bad" : "") }, r.ativo === false ? "Desligada" : "Ativa"));
+    box.append(row);
+  });
+}
+function renderModelos(rows) {
+  const box = $("#msg-cards"); box.textContent = "";
+  rows.forEach((m) => {
+    const c = el("div", { class: "msgcard" });
+    c.append(el("h3", null, m.titulo || m.id));
+    if (m.uso) c.append(el("div", { class: "uso" }, m.uso));
+    c.append(el("pre", { class: "msg" }, m.texto || ""));
+    const b = el("button", { type: "button", style: "margin-top:10px" }, "Copiar");
+    b.addEventListener("click", async () => { try { await navigator.clipboard.writeText(m.texto || ""); toast("Texto copiado."); } catch (e) { toast("Não consegui copiar. Selecione o texto e copie."); } });
+    c.append(b); box.append(c);
+  });
+}
+function renderFila(rows) {
+  const box = $("#fila"); box.textContent = "";
+  if (!rows.length) { box.append(empty("Nenhuma solicitação.", "Envie a primeira pelo formulário acima.")); return; }
+  rows.forEach((r) => {
+    const cls = r.status === "concluida" ? "" : r.status === "recusada" ? "bad" : "warn";
+    const label = r.status === "concluida" ? "Concluída" : r.status === "recusada" ? "Recusada" : r.status === "em_andamento" ? "Em andamento" : "Aberta";
+    const row = el("div", { class: "row" }); const main = el("div", { class: "main" });
+    main.append(el("b", null, (r.tipo || "Outro") + (r.prioridade === "alta" ? " · alta" : "")), el("small", null, when(r.criado_em)), document.createTextNode(r.texto || ""));
+    if (r.resposta) main.append(el("small", null, "Resposta do Claude: " + r.resposta));
+    row.append(main, el("span", { class: "chip " + cls }, label)); box.append(row);
+  });
+}
+
+/* ---------- solicitações (admin) ---------- */
+$("#form-pedido").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const texto = $("#p-texto").value.trim(); if (!texto) return;
+  const b = $("#p-enviar"); b.disabled = true;
+  const { error } = await sb.from("galo_solicitacoes").insert({ tipo: $("#p-tipo").value, prioridade: $("#p-prio").value === "alta" ? "alta" : "normal", texto: texto.slice(0, 800), status: "aberta" });
+  b.disabled = false;
+  if (error) { toast("Não foi possível enviar: " + error.message); return; }
+  $("#p-texto").value = ""; toast("Solicitação enviada."); ciclo();
+});
+
+/* ---------- acessos (admin) ---------- */
+async function admin(acao, extra) {
+  const { data: { session } } = await sb.auth.getSession();
+  const r = await fetch(SB_URL + "/functions/v1/galo-admin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: SB_KEY, Authorization: "Bearer " + (session ? session.access_token : "") },
+    body: JSON.stringify({ acao, ...extra }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.erro || "HTTP " + r.status);
+  return j;
+}
+async function carregarAcessos() {
+  const box = $("#acessos-lista"); box.textContent = "";
+  try {
+    const { perfis } = await admin("listar");
+    if (!perfis.length) { box.append(empty("Ninguém cadastrado.")); return; }
+    perfis.forEach((p) => {
+      const row = el("div", { class: "row" }); const main = el("div", { class: "main" });
+      main.append(el("b", null, p.email), el("small", null, "Desde " + when(p.criado_em)));
+      row.append(main, el("span", { class: "chip " + (p.papel === "admin" ? "" : "muted") }, p.papel === "admin" ? "Administrador" : "Operador"));
+      if (usuario && p.user_id !== usuario.id) {
+        const b = el("button", { type: "button" }, "Remover acesso");
+        b.addEventListener("click", async () => {
+          if (!confirm("Remover o acesso de " + p.email + "?")) return;
+          try { await admin("remover", { user_id: p.user_id }); toast("Acesso removido."); carregarAcessos(); } catch (e) { toast(e.message); }
+        });
+        row.append(b);
+      }
+      box.append(row);
+    });
+  } catch (e) { box.append(empty("Não foi possível listar.", e.message)); }
+}
+$("#form-convite").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const b = $("#c-enviar"); b.disabled = true;
+  const out = $("#convite-out"); out.hidden = true; out.textContent = "";
+  try {
+    const email = $("#c-email").value.trim();
+    const j = await admin("convidar", { email, papel: $("#c-papel").value });
+    if (j.erro) throw new Error(j.erro);
+    const d = el("div", { class: "empty" });
+    d.append(el("b", null, "Convite para " + email), document.createElement("br"), "Envie este link à pessoa. Ele vale por 24 horas e só pode ser usado uma vez:");
+    const code = el("code", { class: "k" }, j.link); code.style.display = "block"; code.style.margin = "8px 0";
+    const cp = el("button", { type: "button" }, "Copiar link");
+    cp.addEventListener("click", async () => { try { await navigator.clipboard.writeText(j.link); toast("Link copiado."); } catch (e2) { toast("Selecione o link e copie."); } });
+    d.append(code, cp); out.append(d); out.hidden = false; $("#c-email").value = ""; carregarAcessos();
+  } catch (err) { toast("Não foi possível criar o convite: " + err.message); }
+  b.disabled = false;
+});
+
+/* ---------- início ---------- */
+async function iniciarApp() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { mostrar("tela-login"); return; }
+  usuario = session.user;
+  const { data: p, error } = await sb.rpc("galo_papel");
+  papel = error ? null : p;
+  if (!papel) {
+    await sb.auth.signOut();
+    mostrar("tela-login");
+    avisoLogin("Este e-mail não tem acesso ao painel. Peça um convite ao administrador.");
+    return;
+  }
+  $("#papel").textContent = papel === "admin" ? "Administrador" : "Operador · consulta";
+  mostrar("app"); montarAbas(); conn("warn", "Conectando");
+  await ciclo(); clearInterval(timer);
+  timer = setInterval(() => { if (!document.hidden) ciclo(); }, 60000);
+}
+sb.auth.onAuthStateChange((ev, session) => {
+  if (ev === "SIGNED_OUT") { clearInterval(timer); papel = null; usuario = null; mostrar("tela-login"); }
+});
+(async function start() {
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  const { data: { session } } = await sb.auth.getSession();
+  if (session && veioDeLink) {
+    $("#senha-quem").textContent = "Conta: " + session.user.email;
+    mostrar("tela-senha"); return;
+  }
+  await iniciarApp();
+})();
+</script>
+</body>
+</html>
