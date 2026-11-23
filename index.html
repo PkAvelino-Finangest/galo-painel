@@ -156,6 +156,24 @@ details.det summary{cursor:pointer;font-weight:600}
     <div class="card" id="atrasados" style="margin-top:10px"></div>
   </section>
 
+  <section id="tab-conciliacao" hidden>
+    <h2>Conciliação Sicoob</h2>
+    <p class="sub">Todo dia útil: 1) suba o extrato OFX do Sicoob aqui; 2) peça ao Claude para rodar a conciliação. Ele lê os comprovantes do WhatsApp, confere cada um com o extrato e dá a baixa no Genesis com a observação “Recebimento realizado por PIX”.</p>
+    <div class="tiles" id="cc-tiles"></div>
+    <p class="note" id="cc-when" style="margin-top:8px"></p>
+    <div style="height:14px"></div>
+    <div class="card" id="cc-import-card"><div class="form">
+      <label class="full">Extrato OFX do Sicoob<input id="cc-file" type="file" accept=".ofx,.OFX,.txt"></label>
+      <div class="full note" id="cc-preview"></div>
+      <div class="full actions"><button class="primary" type="button" id="cc-importar" disabled>Importar extrato</button><button type="button" id="cc-cmd">Copiar comando: conciliar e dar baixas</button></div>
+    </div></div>
+    <div style="height:16px"></div><h2>Comprovantes recebidos</h2>
+    <div class="card" id="cc-comps"></div>
+    <div style="height:16px"></div><h2>Créditos no extrato sem comprovante (últimos 10 dias)</h2>
+    <p class="sub">Pagamentos que entraram na conta e ainda não têm comprovante do WhatsApp associado.</p>
+    <div class="card" id="cc-soltos"></div>
+  </section>
+
   <section id="tab-hoje" hidden>
     <h2>Detalhes técnicos do robô</h2>
     <p class="sub">Só para conferência. Você não precisa acompanhar esta tela: se algo exigir sua ação, aparece em “Hoje”.</p>
@@ -258,7 +276,7 @@ const mostrar = (id) => { ["tela-login", "tela-senha", "app"].forEach((x) => ($(
 const veioDeLink = /type=(invite|recovery)/.test(location.hash);
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 
-let comRows = [], painel = null, papel = null, usuario = null, timer = null, tabAtual = "inicio", statusDoc = null, logRows = [];
+let concil = null, comRows = [], painel = null, papel = null, usuario = null, timer = null, tabAtual = "inicio", statusDoc = null, logRows = [];
 
 /* ---------- login ---------- */
 function avisoLogin(msg) { const a = $("#login-aviso"); a.textContent = msg || ""; a.hidden = !msg; }
@@ -292,7 +310,7 @@ $("#form-senha").addEventListener("submit", async (e) => {
 $("#sair").addEventListener("click", async () => { clearInterval(timer); await sb.auth.signOut(); });
 
 /* ---------- navegação ---------- */
-const ABAS = [["inicio", "Hoje"], ["comunicacao", "Clientes"], ["central", "Modelos e rotinas"], ["hoje", "Robô (técnico)"], ["acessos", "Acessos", "admin"]];
+const ABAS = [["inicio", "Hoje"], ["conciliacao", "Conciliação Sicoob"], ["comunicacao", "Clientes"], ["central", "Modelos e rotinas"], ["hoje", "Robô (técnico)"], ["acessos", "Acessos", "admin"]];
 function montarAbas() {
   const box = $("#tabs"); box.textContent = "";
   ABAS.filter((a) => !a[2] || a[2] === papel).forEach(([id, nome]) => {
@@ -323,10 +341,11 @@ async function ciclo() {
     conn("", "Conectado"); banner("");
     comRows = com;
     try { const { data: ph, error: pe } = await sb.rpc("galo_painel_hoje"); if (pe) throw pe; painel = ph; } catch (e2) { painel = null; }
+    try { const { data: pc, error: pce } = await sb.rpc("galo_painel_conciliacao"); if (pce) throw pce; concil = pc; } catch (e3) { concil = null; }
     logRows = rot;
     renderLog(rot); renderModelos(mod); renderCrono(cro); renderCom(com); renderNuvem(exe, res[0] || null);
     if (papel === "admin") renderFila(sol);
-    renderResumo(); renderInicio(res[0] || null, exe);
+    renderResumo(); renderInicio(res[0] || null, exe); renderConcil(concil);
   } catch (e) {
     conn("err", "Erro");
     if (/JWT|expired|not authorized|permission/i.test(e.message)) banner("Sua sessão expirou. Saia e entre de novo.", true);
@@ -458,6 +477,7 @@ const CMD = {
   avisos: "Enviar os avisos de atraso (D+2) de hoje conforme a lista do painel",
   segunda: "Rodar a Varredura de segunda (atrasados de todos os meses)",
   dia01: "Rodar o Envio do Dia 01 (boletos do mês)",
+  concilia: "Rodar a Conciliação Sicoob: ler os comprovantes do WhatsApp, conferir com o extrato importado e dar as baixas no Genesis",
 };
 const brl = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dmy = (d) => (d ? new Date(d + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—");
@@ -493,6 +513,13 @@ function renderInicio(res, exe) {
     enviar.length ? ["Abra o Genesis e o WhatsApp Web no Chrome", "Cole o comando no Claude"] : null, enviar.length ? CMD.avisos : null));
   ac.append(cardAcao(carlos.length ? "warn" : "ok", carlos.length, "Casos do Sr. Carlos", carlos.length ? carlos.map((x) => x.primeiro_nome + ": " + (x.assunto || "")).join(" · ") : "Nada aguardando decisão do Sr. Carlos.", null, null));
   if (semTel.length) ac.append(cardAcao("bad", semTel.length, "Sem telefone cadastrado", semTel.map((x) => x.responsavel).join(", ") + ". Corrija o telefone no Genesis.", null, null));
+  const ccx = (concil && concil.extrato) || {}; const ccC = (concil && concil.comprovantes) || [];
+  const dias = ccx.ate ? Math.floor((new Date() - new Date(ccx.ate + "T12:00:00")) / 86400000) : null;
+  const pront = ccC.filter((c) => c.status === "conferido").length, rev = ccC.filter((c) => c.status === "recebido" || c.status === "revisar").length;
+  const wd = new Date().getDay(); const util = wd >= 1 && wd <= 5;
+  const precisaExtrato = concil && util && (dias == null || dias > 1);
+  const cc = cardAcao(precisaExtrato || pront || rev ? "warn" : "ok", precisaExtrato ? "!" : pront + rev, "Conciliação Sicoob", precisaExtrato ? "Suba o extrato OFX de hoje na aba Conciliação Sicoob." : pront ? pront + " comprovante(s) conferidos, prontos para baixa no Genesis." : rev ? rev + " comprovante(s) aguardando extrato ou revisão." : "Tudo conciliado.", null, pront ? CMD.concilia : null);
+  const ccb = el("button", { type: "button" }, "Abrir conciliação"); ccb.addEventListener("click", () => { tabAtual = "conciliacao"; rota(); }); cc.append(ccb); ac.append(cc);
   const mais = el("div", { class: "acao" }); mais.append(el("h3", null, "Outros comandos"));
   [["Varredura de segunda (atrasados)", CMD.segunda], ["Envio do Dia 01 (boletos do mês)", CMD.dia01]].forEach(([n, c]) => { const b = el("button", { type: "button" }, n); b.addEventListener("click", () => copiar(c)); mais.append(b); });
   ac.append(mais);
@@ -518,6 +545,77 @@ function renderInicio(res, exe) {
     main.append(el("b", null, x.responsavel), el("small", null, (x.alunos || "") + " · " + x.qtd + " fatura(s) · " + brl(x.total) + " · há " + x.dias + " dias (desde " + dmy(x.mais_antigo) + ")"));
     row.append(main, el("span", { class: "chip " + (x.avisado_em ? "" : x.sem_telefone ? "bad" : "warn") }, x.avisado_em ? "Avisado " + dmy(x.avisado_em) : x.sem_telefone ? "Sem telefone" : "Sem aviso recente")); ab.append(row);
   });
+}
+
+
+/* ---------- Conciliação Sicoob ---------- */
+let ofxLinhas = null, ofxNome = "";
+function lerOfx(txt) {
+  const linhas = [];
+  const blocos = txt.split(/<STMTTRN>/i).slice(1);
+  for (const b of blocos) {
+    const g = (t) => { const m = b.match(new RegExp("<" + t + ">\\s*([^<\\r\\n]*)", "i")); return m ? m[1].trim() : ""; };
+    const dt = g("DTPOSTED").slice(0, 8); let v = g("TRNAMT").replace(/\s/g, "");
+    if (v.includes(",") && !v.includes(".")) v = v.replace(",", "."); else if (v.includes(",") && v.includes(".")) v = v.replace(/\./g, "").replace(",", ".");
+    const val = parseFloat(v);
+    if (dt.length !== 8 || isNaN(val)) continue;
+    linhas.push({ data: dt.slice(0, 4) + "-" + dt.slice(4, 6) + "-" + dt.slice(6, 8), valor: val, fitid: g("FITID"), descricao: [g("MEMO"), g("NAME")].filter(Boolean).join(" ").slice(0, 300) });
+  }
+  return linhas;
+}
+$("#cc-file").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; const pv = $("#cc-preview"); const btn = $("#cc-importar");
+  ofxLinhas = null; btn.disabled = true; pv.textContent = "";
+  if (!f) return;
+  try {
+    const buf = await f.arrayBuffer();
+    let txt = new TextDecoder("utf-8").decode(buf); if (txt.includes("�")) txt = new TextDecoder("windows-1252").decode(buf);
+    const L = lerOfx(txt);
+    if (!L.length) { pv.textContent = "Não encontrei lançamentos neste arquivo. Confira se é o OFX do Sicoob."; return; }
+    const cred = L.filter((x) => x.valor > 0), datas = L.map((x) => x.data).sort();
+    ofxLinhas = L; ofxNome = f.name;
+    pv.textContent = L.length + " lançamentos de " + dmy(datas[0]) + " a " + dmy(datas[datas.length - 1]) + " · " + cred.length + " créditos somando " + brl(cred.reduce((a, x) => a + x.valor, 0)) + ". Confira e toque em Importar.";
+    btn.disabled = false;
+  } catch (err) { pv.textContent = "Não consegui ler o arquivo: " + err.message; }
+});
+$("#cc-importar").addEventListener("click", async () => {
+  if (!ofxLinhas) return;
+  const btn = $("#cc-importar"); btn.disabled = true;
+  const { data, error } = await sb.rpc("galo_importar_extrato", { p_linhas: ofxLinhas, p_arquivo: ofxNome });
+  if (error) { toast(papel === "admin" ? "Não foi possível importar: " + error.message : "Somente o administrador importa o extrato."); btn.disabled = false; return; }
+  const c = data.conciliacao || {};
+  toast(data.novas + " lançamentos novos (" + data.repetidas + " já existiam). Conferidos: " + (c.conferidos || 0) + ".");
+  $("#cc-file").value = ""; $("#cc-preview").textContent = ""; ofxLinhas = null;
+  ciclo();
+});
+$("#cc-cmd").addEventListener("click", () => copiar(CMD.concilia));
+const ST = { recebido: ["Aguardando extrato", "warn"], conferido: ["Conferido: pronto para baixa", ""], revisar: ["Revisar", "bad"], baixado: ["Baixado", "muted"] };
+function renderConcil(P) {
+  const tiles = $("#cc-tiles"); tiles.textContent = "";
+  const addT = (c, b, sm) => { const t = el("div", { class: "tile " + c }); t.append(el("b", null, b), el("span", null, sm)); tiles.append(t); };
+  if (!P) { $("#cc-when").textContent = "Não consegui carregar a conciliação agora."; return; }
+  const ex = P.extrato || {}, cs = P.comprovantes || [];
+  const hoje = new Date(); const ate = ex.ate ? new Date(ex.ate + "T12:00:00") : null; const atraso = ate ? Math.floor((hoje - ate) / 86400000) : null;
+  addT(!ate ? "bad" : atraso > 1 ? "warn" : "ok", ate ? dmy(ex.ate) : "—", "extrato importado até");
+  addT(cs.filter((c) => c.status === "conferido").length ? "ok" : "", String(cs.filter((c) => c.status === "conferido").length), "prontos para baixa");
+  addT(cs.filter((c) => c.status === "recebido" || c.status === "revisar").length ? "warn" : "ok", String(cs.filter((c) => c.status === "recebido" || c.status === "revisar").length), "a revisar / aguardando extrato");
+  addT("", String(cs.filter((c) => c.status === "baixado").length), "já baixados");
+  $("#cc-when").textContent = ate ? (atraso > 1 ? "O último extrato vai até " + dmy(ex.ate) + ". Suba o de hoje." : "Extrato em dia.") + " Última importação em " + when(ex.importado_em) + "." : "Nenhum extrato importado ainda. Suba o OFX do Sicoob abaixo.";
+  if (papel !== "admin") { $("#cc-import-card").hidden = true; }
+  const box = $("#cc-comps"); box.textContent = "";
+  if (!cs.length) box.append(empty("Nenhum comprovante registrado.", "O Claude registra aqui cada comprovante lido no WhatsApp."));
+  cs.forEach((c) => {
+    const row = el("div", { class: "row" }), main = el("div", { class: "main" });
+    main.append(el("b", null, (c.aluno || "Aluno ?") + " · " + (c.valor != null ? brl(c.valor) : "valor não lido")), el("small", null, [c.responsavel, c.forma === "boleto" ? "boleto" : "Pix", c.data_pagamento ? "pago em " + dmy(c.data_pagamento) : ""].filter(Boolean).join(" · ")));
+    if (c.credito_data) main.append(el("small", null, "Crédito no extrato: " + dmy(c.credito_data) + " " + (c.credito_desc || "").slice(0, 60)));
+    if (c.nota) main.append(el("small", null, c.nota));
+    const st = ST[c.status] || [c.status, ""];
+    row.append(main, el("span", { class: "chip " + st[1] }, st[0])); box.append(row);
+  });
+  const sb2 = $("#cc-soltos"); sb2.textContent = "";
+  const so = P.creditos_soltos || [];
+  if (!so.length) sb2.append(empty("Nada solto.", "Todos os créditos recentes têm comprovante associado, ou nenhum extrato foi importado."));
+  so.forEach((x) => { const row = el("div", { class: "row" }), main = el("div", { class: "main" }); main.append(el("b", null, brl(x.valor)), el("small", null, dmy(x.data) + " · " + (x.descricao || ""))); row.append(main, el("span", { class: "chip muted" }, "Sem comprovante")); sb2.append(row); });
 }
 
 /* ---------- solicitações (admin) ---------- */
