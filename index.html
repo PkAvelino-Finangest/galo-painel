@@ -82,6 +82,17 @@ pre.msg{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0 0;font:13.5px/1
 .login h1{font-size:30px}
 a.lnk{color:var(--accent);font-weight:600;background:none;border:0;padding:0;cursor:pointer;font:600 14px var(--body)}
 code.k{font:12.5px ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:1px 5px;word-break:break-all}
+
+.hero{border-radius:12px;padding:16px 18px;background:var(--accent-soft);color:var(--accent)}
+.hero.warn{background:var(--warn-soft);color:var(--warn)} .hero.bad{background:var(--crit-soft);color:var(--crit)}
+.hero b{display:block;font:700 24px/1.2 var(--display)} .hero span{display:block;margin-top:4px;color:var(--ink);font-size:14.5px}
+.acoes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
+.acao{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:8px;align-content:start}
+.acao .n{font:700 34px/1 var(--display)} .acao.warn .n{color:var(--warn)} .acao.ok .n{color:var(--accent)} .acao.bad .n{color:var(--crit)}
+.acao h3{margin:0;font:700 18px var(--display)} .acao p{margin:0;color:var(--muted);font-size:14px}
+.acao ol{margin:0;padding-left:18px;color:var(--muted);font-size:13.5px}
+details.det{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+details.det summary{cursor:pointer;font-weight:600}
 </style>
 </head>
 <body>
@@ -131,7 +142,23 @@ code.k{font:12.5px ui-monospace,Menlo,monospace;background:var(--bg);border:1px 
 <main><div class="wrap">
   <div id="banner" class="banner" hidden></div>
 
-  <section id="tab-hoje">
+  <section id="tab-inicio">
+    <div id="hero" class="hero"></div>
+    <h2>O que fazer hoje</h2>
+    <div class="acoes" id="acoes"></div>
+    <div style="height:8px"></div>
+    <h2>Avisos de atraso de hoje</h2>
+    <p class="sub">Responsáveis com fatura vencida há 2 dias. Quem já foi avisado nos últimos 7 dias não recebe de novo.</p>
+    <div class="card" id="lista-hoje"></div>
+    <div style="height:8px"></div>
+    <h2>Todos os atrasados</h2>
+    <div class="tiles" id="atr-tiles"></div>
+    <div class="card" id="atrasados" style="margin-top:10px"></div>
+  </section>
+
+  <section id="tab-hoje" hidden>
+    <h2>Detalhes técnicos do robô</h2>
+    <p class="sub">Só para conferência. Você não precisa acompanhar esta tela: se algo exigir sua ação, aparece em “Hoje”.</p>
     <h2>Situação do robô</h2>
     <p class="sub">O robô na nuvem lê o Genesis e grava no Supabase; este app só consulta, com números e estados.</p>
     <div class="tiles" id="tiles"></div>
@@ -231,7 +258,7 @@ const mostrar = (id) => { ["tela-login", "tela-senha", "app"].forEach((x) => ($(
 const veioDeLink = /type=(invite|recovery)/.test(location.hash);
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 
-let papel = null, usuario = null, timer = null, tabAtual = "hoje", statusDoc = null, logRows = [];
+let comRows = [], painel = null, papel = null, usuario = null, timer = null, tabAtual = "inicio", statusDoc = null, logRows = [];
 
 /* ---------- login ---------- */
 function avisoLogin(msg) { const a = $("#login-aviso"); a.textContent = msg || ""; a.hidden = !msg; }
@@ -265,7 +292,7 @@ $("#form-senha").addEventListener("submit", async (e) => {
 $("#sair").addEventListener("click", async () => { clearInterval(timer); await sb.auth.signOut(); });
 
 /* ---------- navegação ---------- */
-const ABAS = [["hoje", "Rotinas"], ["resumo", "Resumo"], ["comunicacao", "Comunicação"], ["central", "Central"], ["pedidos", "Solicitações", "admin"], ["acessos", "Acessos", "admin"]];
+const ABAS = [["inicio", "Hoje"], ["comunicacao", "Clientes"], ["central", "Modelos e rotinas"], ["hoje", "Robô (técnico)"], ["acessos", "Acessos", "admin"]];
 function montarAbas() {
   const box = $("#tabs"); box.textContent = "";
   ABAS.filter((a) => !a[2] || a[2] === papel).forEach(([id, nome]) => {
@@ -294,10 +321,12 @@ async function ciclo() {
       papel === "admin" ? q(sb.from("galo_solicitacoes").select("*").order("criado_em", { ascending: false }).limit(40)) : Promise.resolve([]),
     ]);
     conn("", "Conectado"); banner("");
+    comRows = com;
+    try { const { data: ph, error: pe } = await sb.rpc("galo_painel_hoje"); if (pe) throw pe; painel = ph; } catch (e2) { painel = null; }
     logRows = rot;
     renderLog(rot); renderModelos(mod); renderCrono(cro); renderCom(com); renderNuvem(exe, res[0] || null);
     if (papel === "admin") renderFila(sol);
-    renderResumo();
+    renderResumo(); renderInicio(res[0] || null, exe);
   } catch (e) {
     conn("err", "Erro");
     if (/JWT|expired|not authorized|permission/i.test(e.message)) banner("Sua sessão expirou. Saia e entre de novo.", true);
@@ -419,6 +448,75 @@ function renderFila(rows) {
     main.append(el("b", null, (r.tipo || "Outro") + (r.prioridade === "alta" ? " · alta" : "")), el("small", null, when(r.criado_em)), document.createTextNode(r.texto || ""));
     if (r.resposta) main.append(el("small", null, "Resposta do Claude: " + r.resposta));
     row.append(main, el("span", { class: "chip " + cls }, label)); box.append(row);
+  });
+}
+
+
+/* ---------- tela Hoje (simples) ---------- */
+const CMD = {
+  whats: "Rodar Rotina do Whatsapp - varredura de mensagens",
+  avisos: "Enviar os avisos de atraso (D+2) de hoje conforme a lista do painel",
+  segunda: "Rodar a Varredura de segunda (atrasados de todos os meses)",
+  dia01: "Rodar o Envio do Dia 01 (boletos do mês)",
+};
+const brl = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const dmy = (d) => (d ? new Date(d + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—");
+async function copiar(t) { try { await navigator.clipboard.writeText(t); toast("Comando copiado. Cole no Claude, no Chrome."); } catch (e) { toast("Não consegui copiar. Digite: " + t); } }
+function cardAcao(cls, n, titulo, desc, passos, cmd) {
+  const c = el("div", { class: "acao " + cls });
+  c.append(el("div", { class: "n" }, String(n)), el("h3", null, titulo), el("p", null, desc));
+  if (passos) { const ol = el("ol"); passos.forEach((x) => ol.append(el("li", null, x))); c.append(ol); }
+  if (cmd) { const b = el("button", { type: "button", class: "primary" }, "Copiar comando"); b.addEventListener("click", () => copiar(cmd)); c.append(b); }
+  return c;
+}
+function renderInicio(res, exe) {
+  const P = painel; const d = (res && res.dados) || {};
+  const sess = (P && P.sessao && P.sessao.estado) || (d.sessao && d.sessao.estado) || null;
+  const aResp = comRows.filter((x) => x.situacao === "a_responder");
+  const carlos = comRows.filter((x) => x.situacao === "com_carlos");
+  const lista = (P && P.lista_hoje) || [];
+  const enviar = lista.filter((x) => x.situacao === "ENVIAR HOJE" && !x.avisado_em);
+  const semTel = lista.filter((x) => x.situacao === "SEM TELEFONE");
+  const atr = (P && P.atrasados) || [];
+  const hero = $("#hero"); hero.textContent = "";
+  let cls = "", t1 = "", t2 = "";
+  if (!P) { cls = "warn"; t1 = "Não consegui carregar os dados de hoje"; t2 = "Puxe a tela para atualizar. Se continuar, avise o Claude."; }
+  else if (sess && sess !== "ok") { cls = "bad"; t1 = "Falta o login no Genesis"; t2 = "O robô não está conseguindo ler as faturas. Entre no Genesis no Chrome e peça ao Claude: “atualizar a sessão do Genesis”. Enquanto isso a lista abaixo mostra a última leitura (" + when(P.ultima_leitura) + ")."; }
+  else if (aResp.length + carlos.length + enviar.length > 0) { cls = "warn"; t1 = "Você tem " + (aResp.length + carlos.length + enviar.length) + " coisa(s) para tratar hoje"; t2 = "O Genesis está sendo lido normalmente (última leitura " + when(P.ultima_leitura) + "). Veja abaixo o que fazer."; }
+  else { t1 = "Tudo em dia"; t2 = "O Genesis está sendo lido normalmente (última leitura " + when(P.ultima_leitura) + "). Nada pendente para você agora."; }
+  hero.className = "hero " + cls; hero.append(el("b", null, t1), el("span", null, t2));
+
+  const ac = $("#acoes"); ac.textContent = "";
+  ac.append(cardAcao(aResp.length ? "warn" : "ok", aResp.length, "Clientes para responder", aResp.length ? aResp.map((x) => x.primeiro_nome).join(", ") + "." : "Nenhum cliente aguardando resposta na última varredura do WhatsApp.",
+    ["Abra o WhatsApp Web no Chrome", "Abra o Claude (painel lateral)", "Cole o comando e deixe rodar"], CMD.whats));
+  ac.append(cardAcao(enviar.length ? "warn" : "ok", enviar.length, "Avisos de atraso a enviar", enviar.length ? "Responsáveis da lista de hoje que ainda não receberam aviso (máx. 20 por dia)." : "Nenhum aviso D+2 pendente hoje.",
+    enviar.length ? ["Abra o Genesis e o WhatsApp Web no Chrome", "Cole o comando no Claude"] : null, enviar.length ? CMD.avisos : null));
+  ac.append(cardAcao(carlos.length ? "warn" : "ok", carlos.length, "Casos do Sr. Carlos", carlos.length ? carlos.map((x) => x.primeiro_nome + ": " + (x.assunto || "")).join(" · ") : "Nada aguardando decisão do Sr. Carlos.", null, null));
+  if (semTel.length) ac.append(cardAcao("bad", semTel.length, "Sem telefone cadastrado", semTel.map((x) => x.responsavel).join(", ") + ". Corrija o telefone no Genesis.", null, null));
+  const mais = el("div", { class: "acao" }); mais.append(el("h3", null, "Outros comandos"));
+  [["Varredura de segunda (atrasados)", CMD.segunda], ["Envio do Dia 01 (boletos do mês)", CMD.dia01]].forEach(([n, c]) => { const b = el("button", { type: "button" }, n); b.addEventListener("click", () => copiar(c)); mais.append(b); });
+  ac.append(mais);
+
+  const lh = $("#lista-hoje"); lh.textContent = "";
+  if (!lista.length) lh.append(empty("Lista de hoje vazia.", "Nenhuma fatura venceu há 2 dias."));
+  lista.forEach((x) => {
+    const row = el("div", { class: "row" }), main = el("div", { class: "main" });
+    main.append(el("b", null, x.responsavel), el("small", null, x.qtd + " fatura(s) · " + brl(x.total) + (x.prazo ? " · pagar até " + dmy(x.prazo) : "")));
+    const lab = x.avisado_em ? "Avisado " + dmy(x.avisado_em) : x.situacao === "ENVIAR HOJE" ? "Enviar hoje" : x.situacao === "SEM TELEFONE" ? "Sem telefone" : "Na fila";
+    row.append(main, el("span", { class: "chip " + (x.avisado_em ? "" : x.situacao === "SEM TELEFONE" ? "bad" : "warn") }, lab)); lh.append(row);
+  });
+
+  const at = $("#atr-tiles"); at.textContent = "";
+  const tot = atr.reduce((a, x) => a + Number(x.total || 0), 0), nf = atr.reduce((a, x) => a + Number(x.qtd || 0), 0);
+  const addT = (c, b, s) => { const t = el("div", { class: "tile " + c }); t.append(el("b", null, b), el("span", null, s)); at.append(t); };
+  addT(atr.length ? "bad" : "ok", brl(tot), "vencido em " + nf + " faturas"); addT("", String(atr.length), "responsáveis em atraso");
+  if (P && P.pagas_mes) addT("ok", brl(P.pagas_mes.total), P.pagas_mes.qtd + " faturas pagas no mês");
+  const ab = $("#atrasados"); ab.textContent = "";
+  if (!atr.length) ab.append(empty("Nenhum atraso.", "")); 
+  atr.forEach((x) => {
+    const row = el("div", { class: "row" }), main = el("div", { class: "main" });
+    main.append(el("b", null, x.responsavel), el("small", null, (x.alunos || "") + " · " + x.qtd + " fatura(s) · " + brl(x.total) + " · há " + x.dias + " dias (desde " + dmy(x.mais_antigo) + ")"));
+    row.append(main, el("span", { class: "chip " + (x.avisado_em ? "" : x.sem_telefone ? "bad" : "warn") }, x.avisado_em ? "Avisado " + dmy(x.avisado_em) : x.sem_telefone ? "Sem telefone" : "Sem aviso recente")); ab.append(row);
   });
 }
 
