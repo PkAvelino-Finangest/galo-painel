@@ -1,6 +1,6 @@
 // Service worker mínimo: guarda só a "casca" do app para abrir rápido e permitir a instalação.
 // Dados do Supabase nunca são guardados (sempre da rede).
-const CACHE = "galo-painel-v1";
+const CACHE = "galo-painel-v2";
 const CASCA = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", (e) => {
