@@ -189,6 +189,7 @@ button.mini{padding:4px 10px;font-size:12.5px}
     <span class="grow"></span>
     <span id="conn" class="pill warn">Conectando</span>
     <span id="papel" class="pill"></span>
+    <button id="atualizar-rotinas" type="button" class="primary" style="padding:6px 12px;font-size:13px" hidden>Atualizar rotinas</button>
     <button id="sair" type="button" style="padding:6px 10px;font-size:13px">Sair</button>
   </div>
 </header>
@@ -938,6 +939,24 @@ document.addEventListener("change", (e) => {
 });
 document.addEventListener("input", (e) => { if (e.target && e.target.id === "wa-busca") waRenderLista(); else if (e.target && e.target.id === "wa-vinc-busca") waRenderResps(); });
 
+/* ---------- Atualizar rotinas (admin): Genesis + responsáveis + boletos + vínculos do WhatsApp ---------- */
+$("#atualizar-rotinas").addEventListener("click", async () => {
+  const b = $("#atualizar-rotinas"); if (b.disabled) return;
+  b.disabled = true; b.textContent = "Atualizando…";
+  try {
+    const { data, error } = await sb.rpc("galo_atualizar_rotinas");
+    if (error) throw error;
+    if (!data || !data.ok) { toast((data && data.erro) || "Não foi possível atualizar agora."); b.disabled = false; b.textContent = "Atualizar rotinas"; return; }
+    toast("Atualização iniciada. O Genesis leva 1 a 3 minutos; o painel recarrega sozinho.");
+    WA.tL = 0; await waLista(); await ciclo();
+    let n = 0;
+    const t = setInterval(async () => {
+      n++; await ciclo(); WA.tL = Date.now(); await waLista(); if (WA.aberta) { WA.assin = ""; await waChat(false); }
+      if (n >= 6) { clearInterval(t); b.disabled = false; b.textContent = "Atualizar rotinas"; toast("Rotinas atualizadas. Veja o resultado em “Robô (técnico)”."); }
+    }, 30000);
+  } catch (e) { toast("Não foi possível atualizar: " + e.message); b.disabled = false; b.textContent = "Atualizar rotinas"; }
+});
+
 /* ---------- acessos (admin) ---------- */
 async function admin(acao, extra) {
   const { data: { session } } = await sb.auth.getSession();
@@ -1003,6 +1022,7 @@ async function iniciarApp() {
     return;
   }
   $("#papel").textContent = papel === "admin" ? "Administrador" : "Operador · consulta";
+  $("#atualizar-rotinas").hidden = papel !== "admin";
   mostrar("app"); montarAbas(); conn("warn", "Conectando");
   await ciclo(); clearInterval(timer);
   timer = setInterval(() => { if (!document.hidden) ciclo(); }, 60000);
