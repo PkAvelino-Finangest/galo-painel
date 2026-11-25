@@ -226,6 +226,12 @@ button.mini{padding:4px 10px;font-size:12.5px}
     </div>
   </section>
 
+  <section id="tab-solicitar" hidden>
+    <h2>Solicitar ao Claude</h2>
+    <p class="sub">Escolha a rotina, ajuste o texto se quiser e toque em <b>Abrir no Claude</b> (abre uma conversa nova já com o pedido; é só enviar) ou em <b>Copiar</b> para colar no Claude do celular ou do computador. Os pedidos rodam pelo Supabase e pela fila do robô do WhatsApp: não precisa abrir Chrome nem WhatsApp Web. Mensagens a clientes seguem as regras de sempre (modelos, 20 por dia, horário comercial).</p>
+    <div class="msgs" id="sol-cards"></div>
+  </section>
+
   <section id="tab-conciliacao" hidden>
     <h2>Conciliação Sicoob</h2>
     <p class="sub">Todo dia útil: 1) suba o extrato OFX do Sicoob aqui; 2) peça ao Claude para rodar a conciliação. Ele lê os comprovantes do WhatsApp, confere cada um com o extrato e dá a baixa no Genesis com a observação “Recebimento realizado por PIX”.</p>
@@ -388,13 +394,13 @@ $("#form-senha").addEventListener("submit", async (e) => {
 $("#sair").addEventListener("click", async () => { clearInterval(timer); await sb.auth.signOut(); });
 
 /* ---------- navegação ---------- */
-const ABAS = [["inicio", "Hoje"], ["whatsapp", "WhatsApp"], ["conciliacao", "Conciliação Sicoob"], ["comunicacao", "Clientes"], ["central", "Modelos e rotinas"], ["hoje", "Robô (técnico)"], ["acessos", "Acessos", "admin"]];
+const ABAS = [["inicio", "Hoje"], ["whatsapp", "WhatsApp"], ["solicitar", "Solicitar ao Claude", "admin"], ["conciliacao", "Conciliação Sicoob"], ["comunicacao", "Clientes"], ["central", "Modelos e rotinas"], ["hoje", "Robô (técnico)"], ["acessos", "Acessos", "admin"]];
 function montarAbas() {
   const box = $("#tabs"); box.textContent = "";
   ABAS.filter((a) => !a[2] || a[2] === papel).forEach(([id, nome]) => {
     const b = el("button", { class: "tab", type: "button", "data-tab": id }, nome);
     if (id === "whatsapp") b.id = "tab-btn-wa";
-    b.addEventListener("click", () => { tabAtual = id; rota(); if (id === "acessos") carregarAcessos(); if (id === "whatsapp") waAbriuAba(); });
+    b.addEventListener("click", () => { tabAtual = id; rota(); if (id === "acessos") carregarAcessos(); if (id === "whatsapp") waAbriuAba(); if (id === "solicitar") renderSolicitar(); });
     box.append(b);
   });
   rota();
@@ -938,6 +944,51 @@ document.addEventListener("change", (e) => {
   }
 });
 document.addEventListener("input", (e) => { if (e.target && e.target.id === "wa-busca") waRenderLista(); else if (e.target && e.target.id === "wa-vinc-busca") waRenderResps(); });
+
+/* ---------- Solicitar ao Claude (admin): comandos completos para copiar ou abrir no Claude ---------- */
+const SB_PROJ = "projeto Supabase galo-cobranca (id lcayypvckwusqxpxioic)";
+const SOLICITACOES = [
+  { id: "triagem", titulo: "Triagem do WhatsApp e avisos D+2", uso: "Responde os clientes com os modelos e enfileira os avisos de atraso de hoje.",
+    texto: "Cobrança Galo Varginha (Finangest): execute agora a rotina agendada \"Galo – Triagem e avisos D+2 (15h)\" (id trig_013efsFc4e1wrR6PXmzWKFyy), seguindo exatamente as instruções dela. Tudo pelo " + SB_PROJ + ": leia o espelho do WhatsApp (tabelas galo_wa_*) e envie só pela fila galo_fila_envio. Não use navegador. Ao final, me mostre o relatório (respondidos, avisos enfileirados, casos para o Sr. Carlos, baixas pendentes)." },
+  { id: "varredura", titulo: "Varredura de atrasados", uso: "Avisa todos os atrasados de meses anteriores (até 20 por dia).",
+    texto: "Cobrança Galo Varginha (Finangest): execute agora a rotina agendada \"Galo – Varredura de atrasados (segunda e terça 8h47)\" (id trig_017Ex2UmP478tyECBsV5hnYo), como se fosse segunda-feira, seguindo exatamente as instruções dela. Tudo pelo " + SB_PROJ + "; envie só pela fila galo_fila_envio, sem navegador. Ao final, me mostre o relatório (avisos enfileirados, pulados e motivos, casos para o Sr. Carlos)." },
+  { id: "teste", titulo: "Simular rotinas (sem enviar nada)", uso: "Roda a triagem e a varredura em modo teste: monta as mensagens e não envia.",
+    texto: "MODO TESTE – Cobrança Galo Varginha (Finangest): rode as rotinas \"Galo – Triagem e avisos D+2 (15h)\" e \"Galo – Varredura de atrasados\" em MODO TESTE, pelo " + SB_PROJ + ". NÃO grave nada em galo_fila_envio, galo_envios nem galo_comunicacao. Me mostre o texto de cada mensagem que seria enviada e quem seria pulado e por quê." },
+  { id: "genesis", titulo: "Atualizar leitura do Genesis", uso: "Relê faturas, responsáveis e boletos agora (o mesmo do botão Atualizar rotinas).",
+    texto: "Cobrança Galo Varginha (Finangest): no " + SB_PROJ + ", rode em SQL: select public.galo_chamar_robo('genesis-responsaveis'); select public.galo_chamar_robo('genesis-rotina'); select public.galo_chamar_robo('genesis-boletos'); Espere 3 minutos e me diga o resultado do último registro de galo_rotinas_log com id terminado em '-sb' (faturas lidas, lista de hoje) e o estado de galo_sessao (sem mostrar cookies)." },
+  { id: "resumo", titulo: "Resumo da cobrança agora", uso: "Situação do dia: faturas em aberto, fila de envio, conversas sem resposta.",
+    texto: "Cobrança Galo Varginha (Finangest): pelo " + SB_PROJ + ", só leitura, me dê um resumo curto de agora: faturas pendentes e vencidas (galo_faturas), lista D+2 de hoje (galo_lista_d2), fila de envio de hoje por status e erros (galo_fila_envio), conversas do WhatsApp com mensagem de cliente sem resposta nos últimos 3 dias (galo_wa_mensagens) e se o robô do WhatsApp está ligado (galo_wa_robo.ultimo_sinal). Não envie nenhuma mensagem." },
+  { id: "carlos", titulo: "Pendências para o Sr. Carlos", uso: "Monta a lista de cancelamentos, contestações de valor e reclamações sem resposta.",
+    texto: "Cobrança Galo Varginha (Finangest): pelo " + SB_PROJ + ", leia as conversas do espelho do WhatsApp (galo_wa_mensagens com transcrição dos áudios, galo_contatos para responsável e aluno) e liste os casos que dependem do Sr. Carlos: cancelamento/desligamento, contestação de valor, desconto, estorno, isenção e reclamações sem resposta, com data, aluno, valor em aberto (galo_faturas) e o que a família disse. Monte a mensagem para o grupo \"BPO GRUPO ESCOLINHA GALO\" e me mostre antes de enviar." },
+  { id: "dia01", titulo: "Envio do Dia 01 (boletos do mês)", uso: "Primeiro dia útil: envia os boletos do mês a todos os responsáveis.",
+    texto: "Cobrança Galo Varginha (Finangest): prepare o Envio do Dia 01 (boletos do mês) pelo " + SB_PROJ + ": para cada fatura do mês em galo_faturas com telefone, monte a mensagem com o link do boleto (galo_boletos) e a chave Pix CNPJ 60.799.473/0004-75, e coloque na fila galo_fila_envio como 'pendente' (não aprovado). Me mostre a lista e o texto antes de aprovar o envio." },
+  { id: "concilia", titulo: "Conciliação Sicoob", uso: "Confere os comprovantes do WhatsApp com o extrato e indica as baixas.",
+    texto: CMD.concilia + ". Use o " + SB_PROJ + " (comprovantes no espelho do WhatsApp e extrato importado). Baixas no Genesis só com a minha confirmação, uma a uma." },
+  { id: "livre", titulo: "Outro pedido", uso: "Escreva o que precisa; o contexto do projeto já vai junto.",
+    texto: "Cobrança Galo Varginha (Finangest), " + SB_PROJ + ": " },
+];
+function renderSolicitar() {
+  const box = $("#sol-cards"); if (!box || box.dataset.ok) return; box.dataset.ok = "1";
+  SOLICITACOES.forEach((s) => {
+    const c = el("div", { class: "msgcard" });
+    const ta = el("textarea", { id: "sol-" + s.id, rows: s.id === "livre" ? "5" : "7", "aria-label": s.titulo, style: "min-height:120px;font-size:13.5px;line-height:1.5;margin-top:8px" });
+    ta.value = s.texto;
+    const ac = el("div", { class: "actions", style: "margin-top:8px" });
+    const abrir = el("button", { type: "button", class: "primary" }, "Abrir no Claude");
+    abrir.addEventListener("click", () => {
+      const t = ta.value.trim(); if (!t) { toast("Escreva o pedido."); return; }
+      const url = "https://claude.ai/new?q=" + encodeURIComponent(t);
+      const w = window.open(url, "_blank", "noopener");
+      if (!w) location.href = url;
+    });
+    const cp = el("button", { type: "button" }, "Copiar");
+    cp.addEventListener("click", async () => { try { await navigator.clipboard.writeText(ta.value); toast("Copiado. Cole no Claude e envie."); } catch (e) { ta.select(); toast("Selecione o texto e copie."); } });
+    ac.append(abrir, cp);
+    if (navigator.share) { const sh = el("button", { type: "button" }, "Compartilhar"); sh.addEventListener("click", () => navigator.share({ text: ta.value }).catch(() => {})); ac.append(sh); }
+    c.append(el("h3", null, s.titulo), el("div", { class: "uso" }, s.uso), ta, ac);
+    box.append(c);
+  });
+}
 
 /* ---------- Atualizar rotinas (admin): Genesis + responsáveis + boletos + vínculos do WhatsApp ---------- */
 $("#atualizar-rotinas").addEventListener("click", async () => {
