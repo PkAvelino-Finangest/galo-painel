@@ -91,6 +91,13 @@ code.k{font:12.5px ui-monospace,Menlo,monospace;background:var(--bg);border:1px 
 .acao .n{font:700 34px/1 var(--display)} .acao.warn .n{color:var(--warn)} .acao.ok .n{color:var(--accent)} .acao.bad .n{color:var(--crit)}
 .acao h3{margin:0;font:700 18px var(--display)} .acao p{margin:0;color:var(--muted);font-size:14px}
 .acao ol{margin:0;padding-left:18px;color:var(--muted);font-size:13.5px}
+.acao{position:relative}.acao-head{display:flex;align-items:center;gap:8px}.acao-head h3{flex:1;min-width:0}
+.info{flex:none;width:26px;height:26px;min-height:26px;padding:0;border-radius:50%;font:700 14px/1 var(--display);background:var(--accent-soft);color:var(--accent);border:1px solid var(--line);cursor:help}
+.tip{display:none;position:absolute;left:10px;right:10px;top:96px;z-index:20;background:var(--ink);color:var(--surface);padding:10px 12px;border-radius:8px;font-size:13.5px;line-height:1.4;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.acao.tip-on .tip{display:block}
+.btn-agora{align-self:start}.row .btn-agora{margin-left:auto}
+dialog.dlg-exec{border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:0;max-width:min(92vw,440px)}
+dialog.dlg-exec::backdrop{background:rgba(0,0,0,.45)}.dlg-corpo{padding:18px;display:grid;gap:10px}.dlg-corpo h3{margin:0;font:700 18px var(--display)}.dlg-corpo p{margin:0;font-size:14.5px}.dlg-aviso{background:var(--accent-soft);border-radius:8px;padding:8px 10px;font-weight:600}.dlg-bt{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 details.det{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 14px}
 details.det summary{cursor:pointer;font-weight:600}
 /* WhatsApp: lista de conversas | conversa em balões (no celular, uma tela de cada vez) */
@@ -522,11 +529,13 @@ const TIPOS = { auto: "Automática", claude: "Com o Claude", manual: "Manual" };
 function renderCrono(rows) {
   const box = $("#cron-lista"); box.textContent = "";
   if (!rows.length) { box.append(empty("Nenhuma rotina cadastrada.")); return; }
+  if (!rows.some((r) => r.id === "x-boletos")) rows = rows.concat([{ id: "x-boletos", nome: "Ler links dos boletos (Genesis, somente leitura)", quando: "Sob demanda, sem horário fixo", tipo: "auto", ativo: true, obs: "Lê o extrato de cada fatura vencida e guarda o link do boleto. Não envia mensagens." }]);
   rows.forEach((r) => {
     const row = el("div", { class: "row" }); const main = el("div", { class: "main" });
     main.append(el("b", null, r.nome || ""), el("small", null, r.quando || ""));
     if (r.obs) main.append(el("small", null, r.obs));
     row.append(main, el("span", { class: "chip muted" }, TIPOS[r.tipo] || r.tipo || ""), el("span", { class: "chip " + (r.ativo === false ? "bad" : "") }, r.ativo === false ? "Desligada" : "Ativa"));
+    if (CRONO_TAREFA[r.id] && r.ativo !== false && ehAdmin()) row.append(botaoAgora(CRONO_TAREFA[r.id]));
     box.append(row);
   });
 }
@@ -567,11 +576,71 @@ const CMD = {
 const brl = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dmy = (d) => (d ? new Date(d + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—");
 async function copiar(t) { try { await navigator.clipboard.writeText(t); toast("Comando copiado. Cole no Claude, no Chrome."); } catch (e) { toast("Não consegui copiar. Digite: " + t); } }
-function cardAcao(cls, n, titulo, desc, passos, cmd) {
+const TIPS = {
+  whats: "Separa quem aguarda resposta no WhatsApp e prepara a resposta padrão. Exceções vão ao Sr. Carlos.",
+  avisos: "Prepara os avisos de atraso D+2 com a chave Pix. Só envia após validação: no máximo 20 por dia e 1 por responsável a cada 7 dias.",
+  carlos: "Desligamento, isenção, estorno, bolsa, valor divergente e outras decisões que só o Sr. Carlos toma.",
+  concilia: "Confere o extrato OFX do Sicoob com os comprovantes e dá baixa no Genesis.",
+  segunda: "Revisa os atrasados e prepara as cobranças.",
+  dia01: "Envia os boletos do mês em grupos de até 18.",
+};
+// "fn" = função do Supabase (via galo_executar_agora); "env" = tarefa do Claude (via função galo-executar-claude, token guardado em segredo)
+const TAREFAS = {
+  ping: { fn: "genesis-ping", nome: "Manter a sessão do Genesis", aviso: "Faz uma visita leve ao Genesis para renovar a sessão. Não altera nada no Genesis e não envia mensagens." },
+  rotina: { fn: "genesis-rotina", nome: "Rotina diária do Genesis", aviso: "Lê as faturas do Genesis e refaz a lista de avisos de hoje. Não envia mensagens." },
+  boletos: { fn: "genesis-boletos", nome: "Ler links dos boletos", aviso: "Lê o extrato de cada fatura vencida no Genesis e guarda o link do boleto. Somente leitura; não envia mensagens." },
+  whats: { env: "whats", nome: "Clientes para responder", envia: true, aviso: "O Claude vai ler as conversas do WhatsApp que aguardam resposta e colocar as respostas padrão na fila de envio. O robô envia essas mensagens aos clientes. Casos especiais ficam para o Sr. Carlos." },
+  avisos: { env: "avisos", nome: "Avisos de atraso (D+2)", envia: true, aviso: "O Claude vai montar os avisos de atraso de hoje e colocá-los na fila de envio. O robô envia aos clientes (máx. 20 por dia, 1 por responsável a cada 7 dias)." },
+  segunda: { env: "segunda", nome: "Varredura de segunda", envia: true, aviso: "O Claude vai revisar os atrasados de todos os meses e colocar as cobranças na fila de envio. O robô envia aos clientes (máx. 20 por vez, 1 por responsável a cada 7 dias)." },
+  dia01: { env: "dia01", nome: "Envio do Dia 01", aviso: "Dispara agora a tarefa do Dia 01 na nuvem. Hoje ela só manda o lembrete para você; os boletos continuam sendo enviados no Chrome." },
+};
+const CRONO_TAREFA = { c1: "ping", c2: "rotina", c4: "whats", c5: "avisos", c6: "segunda", c7: "dia01", "x-boletos": "boletos" };
+function confirmarExec(t) {
+  return new Promise((ok) => {
+    const d = el("dialog", { class: "dlg-exec" }), f = el("div", { class: "dlg-corpo" });
+    const nao = el("button", { type: "button" }, "Cancelar"), sim = el("button", { type: "button", class: "primary" }, "Executar agora");
+    f.append(el("h3", null, t.nome), el("p", null, t.aviso));
+    if (t.envia) f.append(el("p", { class: "dlg-aviso" }, "Pode gerar mensagens para clientes. Só continue se estiver de acordo."));
+    f.append(el("div", { class: "dlg-bt" }, nao, sim)); d.append(f);
+    const fim = (v) => { try { d.close(); } catch (e) {} d.remove(); ok(v); };
+    nao.addEventListener("click", () => fim(false)); sim.addEventListener("click", () => fim(true));
+    d.addEventListener("cancel", (e) => { e.preventDefault(); fim(false); });
+    document.body.append(d); d.showModal();
+  });
+}
+async function executarAgora(chave, botao) {
+  const t = TAREFAS[chave]; if (!t) return;
+  if (!ehAdmin()) { toast("Somente o administrador executa tarefas."); return; }
+  if (!(await confirmarExec(t))) return;
+  const rot = botao.textContent; botao.disabled = true; botao.textContent = "Executando…";
+  try {
+    if (t.fn) {
+      const { error } = await sb.rpc("galo_executar_agora", { p_tarefa: t.fn }); if (error) throw error;
+      toast("Iniciada. Atualizo o painel em instantes."); setTimeout(() => ciclo(), 25000);
+    } else {
+      const { data, error } = await sb.functions.invoke("galo-executar-claude", { body: { tarefa: t.env } }); if (error) throw error;
+      if (data && data.estado === "sem_token") { window.open(data.url, "_blank", "noopener"); toast("Esta tarefa ainda não tem token guardado. Abri a tarefa no claude.ai."); }
+      else if (data && data.estado === "disparada") toast("Tarefa iniciada no Claude. O resultado aparece nos relatórios em alguns minutos.");
+      else throw new Error((data && data.erro) || "resposta inesperada");
+    }
+  } catch (e) { toast("Não consegui iniciar: " + (e.message || e)); }
+  finally { botao.disabled = false; botao.textContent = rot; }
+}
+function botaoAgora(chave) { const b = el("button", { type: "button", class: "primary btn-agora" }, "Executar agora"); b.addEventListener("click", () => executarAgora(chave, b)); return b; }
+document.addEventListener("click", (e) => { document.querySelectorAll(".acao.tip-on").forEach((c) => { if (!c.contains(e.target) || !e.target.closest(".acao-head")) c.classList.remove("tip-on"); }); });
+function cardAcao(cls, n, titulo, desc, passos, cmd, ex) {
   const c = el("div", { class: "acao " + cls });
-  c.append(el("div", { class: "n" }, String(n)), el("h3", null, titulo), el("p", null, desc));
+  const head = el("div", { class: "acao-head" }, el("h3", null, titulo));
+  if (ex && ex.tip) {
+    const i = el("button", { type: "button", class: "info", "aria-label": "O que esta tarefa faz" }, "i"), tip = el("div", { class: "tip", role: "tooltip" }, ex.tip);
+    i.addEventListener("click", () => c.classList.toggle("tip-on"));
+    head.addEventListener("mouseenter", () => c.classList.add("tip-on")); head.addEventListener("mouseleave", () => c.classList.remove("tip-on"));
+    head.append(i); c.append(tip);
+  }
+  c.append(el("div", { class: "n" }, String(n)), head, el("p", null, desc));
   if (passos) { const ol = el("ol"); passos.forEach((x) => ol.append(el("li", null, x))); c.append(ol); }
-  if (cmd) { const b = el("button", { type: "button", class: "primary" }, "Copiar comando"); b.addEventListener("click", () => copiar(cmd)); c.append(b); }
+  if (ex && ex.tarefa) c.append(botaoAgora(ex.tarefa));
+  else if (cmd) { const b = el("button", { type: "button", class: "primary" }, "Copiar comando"); b.addEventListener("click", () => copiar(cmd)); c.append(b); }
   return c;
 }
 function renderInicio(res, exe) {
@@ -593,21 +662,22 @@ function renderInicio(res, exe) {
 
   const ac = $("#acoes"); ac.textContent = "";
   ac.append(cardAcao(aResp.length ? "warn" : "ok", aResp.length, "Clientes para responder", aResp.length ? aResp.map((x) => x.primeiro_nome).join(", ") + "." : "Nenhum cliente aguardando resposta na última varredura do WhatsApp.",
-    ["Abra o WhatsApp Web no Chrome", "Abra o Claude (painel lateral)", "Cole o comando e deixe rodar"], CMD.whats));
+    ["Toque em Executar agora e confirme", "Roda na nuvem: não precisa abrir o WhatsApp Web nem o Chrome", "As respostas entram na fila e o resultado aparece nos relatórios"], CMD.whats, { tarefa: "whats", tip: TIPS.whats }));
   ac.append(cardAcao(enviar.length ? "warn" : "ok", enviar.length, "Avisos de atraso a enviar", enviar.length ? "Responsáveis da lista de hoje que ainda não receberam aviso (máx. 20 por dia)." : "Nenhum aviso D+2 pendente hoje.",
-    enviar.length ? ["Abra o Genesis e o WhatsApp Web no Chrome", "Cole o comando no Claude"] : null, enviar.length ? CMD.avisos : null));
-  ac.append(cardAcao(carlos.length ? "warn" : "ok", carlos.length, "Casos do Sr. Carlos", carlos.length ? carlos.map((x) => x.primeiro_nome + ": " + (x.assunto || "")).join(" · ") : "Nada aguardando decisão do Sr. Carlos.", null, null));
+    ["Toque em Executar agora e confirme", "Os avisos entram na fila e o robô envia (máx. 20 por dia, 1 por minuto, 9h às 18h)"], CMD.avisos, { tarefa: "avisos", tip: TIPS.avisos }));
+  ac.append(cardAcao(carlos.length ? "warn" : "ok", carlos.length, "Casos do Sr. Carlos", carlos.length ? carlos.map((x) => x.primeiro_nome + ": " + (x.assunto || "")).join(" · ") : "Nada aguardando decisão do Sr. Carlos.", null, null, { tip: TIPS.carlos }));
   if (semTel.length) ac.append(cardAcao("bad", semTel.length, "Sem telefone cadastrado", semTel.map((x) => x.responsavel).join(", ") + ". Corrija o telefone no Genesis.", null, null));
   const ccx = (concil && concil.extrato) || {}; const ccC = (concil && concil.comprovantes) || [];
   const dias = ccx.ate ? Math.floor((new Date() - new Date(ccx.ate + "T12:00:00")) / 86400000) : null;
   const pront = ccC.filter((c) => c.status === "conferido").length, rev = ccC.filter((c) => c.status === "recebido" || c.status === "revisar").length;
   const wd = new Date().getDay(); const util = wd >= 1 && wd <= 5;
   const precisaExtrato = concil && util && (dias == null || dias > 1);
-  const cc = cardAcao(precisaExtrato || pront || rev ? "warn" : "ok", precisaExtrato ? "!" : pront + rev, "Conciliação Sicoob", precisaExtrato ? "Suba o extrato OFX de hoje na aba Conciliação Sicoob." : pront ? pront + " comprovante(s) conferidos, prontos para baixa no Genesis." : rev ? rev + " comprovante(s) aguardando extrato ou revisão." : "Tudo conciliado.", null, pront ? CMD.concilia : null);
+  const cc = cardAcao(precisaExtrato || pront || rev ? "warn" : "ok", precisaExtrato ? "!" : pront + rev, "Conciliação Sicoob", precisaExtrato ? "Suba o extrato OFX de hoje na aba Conciliação Sicoob." : pront ? pront + " comprovante(s) conferidos, prontos para baixa no Genesis." : rev ? rev + " comprovante(s) aguardando extrato ou revisão." : "Tudo conciliado.", null, pront ? CMD.concilia : null, { tip: TIPS.concilia });
   const ccb = el("button", { type: "button" }, "Abrir conciliação"); ccb.addEventListener("click", () => { tabAtual = "conciliacao"; rota(); }); cc.append(ccb); ac.append(cc);
-  const mais = el("div", { class: "acao" }); mais.append(el("h3", null, "Outros comandos"));
-  [["Varredura de segunda (atrasados)", CMD.segunda], ["Envio do Dia 01 (boletos do mês)", CMD.dia01]].forEach(([n, c]) => { const b = el("button", { type: "button" }, n); b.addEventListener("click", () => copiar(c)); mais.append(b); });
-  ac.append(mais);
+  ac.append(cardAcao("", "Seg", "Varredura de segunda", "Revisão dos atrasados de todos os meses, toda segunda às 8h47.", ["Toque em Executar agora e confirme", "As cobranças entram na fila e o robô envia"], CMD.segunda, { tarefa: "segunda", tip: TIPS.segunda }));
+  ac.append(cardAcao("", "01", "Envio do Dia 01", "Boletos do mês, todo dia 01 (primeiro dia útil).", ["Toque em Executar agora e confirme"], CMD.dia01, { tarefa: "dia01", tip: TIPS.dia01 }));
+  
+  
 
   const lh = $("#lista-hoje"); lh.textContent = "";
   if (!lista.length) lh.append(empty("Lista de hoje vazia.", "Nenhuma fatura venceu há 2 dias."));
