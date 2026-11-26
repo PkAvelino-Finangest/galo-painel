@@ -592,9 +592,10 @@ const TAREFAS = {
   whats: { env: "whats", nome: "Clientes para responder", envia: true, aviso: "O Claude vai ler as conversas do WhatsApp que aguardam resposta e colocar as respostas padrão na fila de envio. O robô envia essas mensagens aos clientes. Casos especiais ficam para o Sr. Carlos." },
   avisos: { env: "avisos", nome: "Avisos de atraso (D+2)", envia: true, aviso: "O Claude vai montar os avisos de atraso de hoje e colocá-los na fila de envio. O robô envia aos clientes (máx. 20 por dia, 1 por responsável a cada 7 dias)." },
   segunda: { env: "segunda", nome: "Varredura de segunda", envia: true, aviso: "O Claude vai revisar os atrasados de todos os meses e colocar as cobranças na fila de envio. O robô envia aos clientes (máx. 20 por vez, 1 por responsável a cada 7 dias)." },
+  concilia: { env: "concilia", nome: "Conciliação Sicoob", aviso: "O Claude vai registrar os comprovantes novos do WhatsApp e conferir com o extrato importado. Não envia mensagens e não dá baixa no Genesis: a baixa continua só com a sua confirmação." },
   dia01: { env: "dia01", nome: "Envio do Dia 01", aviso: "Dispara agora a tarefa do Dia 01 na nuvem. Hoje ela só manda o lembrete para você; os boletos continuam sendo enviados no Chrome." },
 };
-const CRONO_TAREFA = { c1: "ping", c2: "rotina", c4: "whats", c5: "avisos", c6: "segunda", c7: "dia01", "x-boletos": "boletos" };
+const CRONO_TAREFA = { "conciliacao-sicoob": "concilia", c1: "ping", c2: "rotina", c4: "whats", c5: "avisos", c6: "segunda", c7: "dia01", "x-boletos": "boletos" };
 function confirmarExec(t) {
   return new Promise((ok) => {
     const d = el("dialog", { class: "dlg-exec" }), f = el("div", { class: "dlg-corpo" });
@@ -640,7 +641,7 @@ function cardAcao(cls, n, titulo, desc, passos, cmd, ex) {
   c.append(el("div", { class: "n" }, String(n)), head, el("p", null, desc));
   if (passos) { const ol = el("ol"); passos.forEach((x) => ol.append(el("li", null, x))); c.append(ol); }
   if (ex && ex.tarefa) c.append(botaoAgora(ex.tarefa));
-  else if (cmd) { const b = el("button", { type: "button", class: "primary" }, "Copiar comando"); b.addEventListener("click", () => copiar(cmd)); c.append(b); }
+  if (cmd && (!ex || !ex.tarefa || ex.comando)) { const b = el("button", { type: "button", class: ex && ex.comando ? "" : "primary" }, ex && ex.comando ? "Copiar comando da baixa" : "Copiar comando"); b.addEventListener("click", () => copiar(cmd)); c.append(b); }
   return c;
 }
 function renderInicio(res, exe) {
@@ -672,7 +673,7 @@ function renderInicio(res, exe) {
   const pront = ccC.filter((c) => c.status === "conferido").length, rev = ccC.filter((c) => c.status === "recebido" || c.status === "revisar").length;
   const wd = new Date().getDay(); const util = wd >= 1 && wd <= 5;
   const precisaExtrato = concil && util && (dias == null || dias > 1);
-  const cc = cardAcao(precisaExtrato || pront || rev ? "warn" : "ok", precisaExtrato ? "!" : pront + rev, "Conciliação Sicoob", precisaExtrato ? "Suba o extrato OFX de hoje na aba Conciliação Sicoob." : pront ? pront + " comprovante(s) conferidos, prontos para baixa no Genesis." : rev ? rev + " comprovante(s) aguardando extrato ou revisão." : "Tudo conciliado.", null, pront ? CMD.concilia : null, { tip: TIPS.concilia });
+  const cc = cardAcao(precisaExtrato || pront || rev ? "warn" : "ok", precisaExtrato ? "!" : pront + rev, "Conciliação Sicoob", precisaExtrato ? "Suba o extrato OFX de hoje na aba Conciliação Sicoob." : pront ? pront + " comprovante(s) conferidos, prontos para baixa no Genesis." : rev ? rev + " comprovante(s) aguardando extrato ou revisão." : "Tudo conciliado.", null, pront ? CMD.concilia : null, { tarefa: "concilia", comando: true, tip: TIPS.concilia });
   const ccb = el("button", { type: "button" }, "Abrir conciliação"); ccb.addEventListener("click", () => { tabAtual = "conciliacao"; rota(); }); cc.append(ccb); ac.append(cc);
   ac.append(cardAcao("", "Seg", "Varredura de segunda", "Revisão dos atrasados de todos os meses, toda segunda às 8h47.", ["Toque em Executar agora e confirme", "As cobranças entram na fila e o robô envia"], CMD.segunda, { tarefa: "segunda", tip: TIPS.segunda }));
   ac.append(cardAcao("", "01", "Envio do Dia 01", "Boletos do mês, todo dia 01 (primeiro dia útil).", ["Toque em Executar agora e confirme"], CMD.dia01, { tarefa: "dia01", tip: TIPS.dia01 }));
